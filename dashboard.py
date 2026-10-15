@@ -47,7 +47,8 @@ def cards(d, compact=False):
 <div style="font-size:{26 if compact else 30}px;font-weight:700;margin:6px 0 8px">{c["val"]}</div>
 {'' if compact else spark(c["spark"], color="#60a5fa")}
 <div style="display:flex;justify-content:space-between;font-size:12px;margin:8px 0 5px" class="muted"><span>{c["note"]}</span><span style="color:{col};font-weight:700">{c["sub"]:.0f}/100</span></div>
-<div class="bar"><div style="width:{c["sub"]:.0f}%;background:{col}"></div></div></div>'''
+<div class="bar"><div style="width:{c["sub"]:.0f}%;background:{col}"></div></div>
+<div style="font-size:11px;margin-top:7px;color:{'#4ade80' if c.get("live") else '#94a3b8'}">{c.get("asof_label","")}</div></div>'''
     return out
 
 def build(d):
@@ -74,7 +75,7 @@ body{{width:1200px;height:900px;padding:36px;display:flex;flex-direction:column}
     card = f'''<!doctype html><html><head><meta charset="utf-8"><style>{CSS}
 body{{width:1200px;height:675px;padding:40px 48px;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between}}.card{{padding:16px 18px}}</style></head><body>
 <div style="display:flex;justify-content:space-between;align-items:center"><div class="brand" style="font-size:40px">Risk Mood</div>
-<div class="muted" style="font-size:18px">US close · {d["date"]}</div></div>
+<div style="display:flex;gap:12px;align-items:center">{('<span class="badge" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid #22c55e55">● Live</span>' if d.get("market")=="Live" else '<span class="badge" style="background:rgba(148,163,184,.12);color:#cbd5e1;border:1px solid #94a3b844">◐ US market closed</span>')}</div></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center">
 <div style="text-align:center">{gauge(t, 500)}<div style="margin-top:6px;font-size:96px;font-weight:800;line-height:1">{t:.0f}</div>
 <div style="font-size:28px;font-weight:700;color:{COL(t)}">{d["label"]} <span style="font-size:20px;color:{chc}">{'▲' if ch>=0 else '▼'}{abs(ch):.0f}</span></div></div>
@@ -114,21 +115,21 @@ body{{min-height:100vh;padding:clamp(18px,4vw,48px)}}.wrap{{max-width:1150px;mar
 .gauge svg{{width:100%;max-width:500px;height:auto}}.score{{font-size:clamp(64px,12vw,104px);font-weight:800;line-height:1}}
 .foot{{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px}}
 @media(max-width:820px){{.main{{grid-template-columns:1fr}}}}@media(max-width:420px){{.cards{{grid-template-columns:1fr}}}}</style></head><body><div class="wrap">
-<div class="top"><div class="brand" style="font-size:clamp(30px,5vw,44px)">Risk Mood</div><div class="muted">US close · {d["date"]}</div></div>
+<div class="top"><div class="brand" style="font-size:clamp(30px,5vw,44px)">Risk Mood</div><div style="display:flex;gap:10px;align-items:center">{('<span class="badge" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid #22c55e55">● Live</span>' if d.get("market")=="Live" else '<span class="badge" style="background:rgba(148,163,184,.12);color:#cbd5e1;border:1px solid #94a3b844">◐ US market closed</span>')}<span class="muted">as of {nz:%a %d %b, %H:%M} NZT</span></div></div>
 <div class="main"><div class="gauge" style="text-align:center">{gauge(t,500)}<div class="score">{t:.0f}</div>
 <div style="font-size:28px;font-weight:700;color:{COL(t)}">{d["label"]} <span style="font-size:20px;color:{chc}">{'▲' if ch>=0 else '▼'}{abs(ch):.0f}</span></div>
-<div class="muted" style="font-size:14px;margin-top:4px">vs {d["prev"]:.0f} previous close</div></div>
+<div class="muted" style="font-size:14px;margin-top:4px">vs {d["prev"]:.0f} at prior session close</div></div>
 <div class="cards">{cards(d, compact=True)}</div></div>
 <div class="glass" style="padding:18px 20px;margin-bottom:18px"><div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:1px">Why it moved</div>
 <div style="font-size:16px;line-height:1.5;margin-top:6px">{html.escape(d["expl"])}</div></div>
 <div class="foot"><div>{divb}</div><div class="muted">Last updated {nz:%a %d %b %Y, %H:%M} NZT · {now:%Y-%m-%d %H:%M} UTC</div></div>
 <p class="muted" style="font-size:12px;margin-top:16px;line-height:1.6">Data: Yahoo Finance (^VIX, ^TNX, ^IXIC, CL=F). Sentiment: {html.escape(d["src"])}.
-Sub-scores are 1-year percentile ranks; 0 = extreme fear, 100 = extreme greed. Refreshes about every 15 minutes; values reflect the latest day with all four inputs. Not financial advice. <a href="data.json" style="color:#60a5fa">data.json</a></p>
+Sub-scores are 1-year percentile ranks; 0 = extreme fear, 100 = extreme greed. Refreshes about every 15 minutes; prices are the latest 1-minute quotes (Yahoo data can be delayed ~15 min; ^TNX has no pre/after-market quotes); changes are vs previous close. Not financial advice. <a href="data.json" style="color:#60a5fa">data.json</a></p>
 </div></body></html>'''
     open(os.path.join(out, "index.html"), "w").write(page)
     shutil.copy("card.png", os.path.join(out, "card.png"))
     dj = {k: v for k, v in d.items() if k != "trend"}
     for c in dj["comps"]: c.pop("spark", None)
-    dj.update(updated_utc=now.isoformat(timespec="seconds"), updated_nz=nz.isoformat(timespec="seconds"), trend_30d=d["trend"])
+    dj.update(market=d.get("market"), updated_utc=now.isoformat(timespec="seconds"), updated_nz=nz.isoformat(timespec="seconds"), trend_30d=d["trend"])
     json.dump(dj, open(os.path.join(out, "data.json"), "w"), indent=2)
     open(os.path.join(out, ".nojekyll"), "w").close()

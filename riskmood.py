@@ -18,8 +18,27 @@ def cnn():
     except Exception:
         return None, None
 
-raw = yf.download(["^VIX", "^TNX", "^IXIC", "CL=F"], period="3y", progress=False, auto_adjust=False)["Close"]
-raw = raw.dropna(subset=["^IXIC", "^TNX"]).ffill().dropna()
+TICKS = ["^VIX", "^TNX", "^IXIC", "CL=F"]
+daily = yf.download(TICKS, period="3y", progress=False, auto_adjust=False)["Close"]
+NOW = pd.Timestamp.now(tz="UTC"); FRESH = pd.Timedelta(minutes=20)
+LIVE, cols = {}, {}
+for tk in TICKS:
+    s = daily[tk].dropna(); s.index = pd.to_datetime(s.index).tz_localize(None).normalize()
+    try:  # latest 1-minute print (incl. pre/post market where Yahoo provides it)
+        h = yf.Ticker(tk).history(period="5d", interval="1m", prepost=True)["Close"].dropna()
+        px, ts = float(h.iloc[-1]), h.index[-1]
+        day = pd.Timestamp(ts.date())
+        prev = float(s[s.index < day].iloc[-1])
+        s = s[s.index < day]; s.loc[day] = px
+        LIVE[tk] = dict(price=px, prev_close=prev, asof_utc=ts.tz_convert("UTC").isoformat(),
+                        live=bool(NOW - ts.tz_convert("UTC") < FRESH), source="intraday 1m")
+    except Exception as e:  # fall back to last daily close
+        LIVE[tk] = dict(price=float(s.iloc[-1]), prev_close=float(s.iloc[-2]), asof_utc=s.index[-1].tz_localize("UTC").isoformat(),
+                        live=False, source=f"daily close (live quote unavailable: {type(e).__name__})")
+    cols[tk] = s.sort_index()
+raw = pd.DataFrame(cols).ffill().dropna()
+CH = {tk: (v["price"] - v["prev_close"], (v["price"] / v["prev_close"] - 1) * 100) for tk, v in LIVE.items()}
+MARKET = "Live" if LIVE["^IXIC"]["live"] else "Market closed"
 pct = lambda s: s.rolling(WIN).apply(lambda x: (x[:-1] < x[-1]).mean() * 100, raw=True)
 
 fg, src = cnn()
@@ -44,12 +63,12 @@ contrib = (sub.iloc[-1] - sub.iloc[-2]) * pd.Series(W)
 drv = contrib.abs().idxmax()
 names = {"sentiment": "sentiment (VIX)" if fg is None else "Fear & Greed", "yield": "the 10Y yield",
          "oil": "oil", "nasdaq": "Nasdaq momentum"}
-moves = {"sentiment": f"VIX {raw['^VIX'].iloc[-1]:.2f} ({raw['^VIX'].diff().iloc[-1]:+.2f})",
-         "yield": f"10Y {raw['^TNX'].iloc[-1]:.2f}% ({raw['^TNX'].diff().iloc[-1]*100:+.0f}bp)",
-         "oil": f"WTI ${raw['CL=F'].iloc[-1]:.2f} ({raw['CL=F'].pct_change().iloc[-1]*100:+.1f}%)",
-         "nasdaq": f"Nasdaq {raw['^IXIC'].iloc[-1]:,.0f} ({raw['^IXIC'].pct_change().iloc[-1]*100:+.1f}%)"}
+moves = {"sentiment": f"VIX {LIVE['^VIX']['price']:.2f} ({CH['^VIX'][0]:+.2f})",
+         "yield": f"10Y {LIVE['^TNX']['price']:.2f}% ({CH['^TNX'][0]*100:+.0f}bp)",
+         "oil": f"WTI ${LIVE['CL=F']['price']:.2f} ({CH['CL=F'][1]:+.1f}%)",
+         "nasdaq": f"Nasdaq {LIVE['^IXIC']['price']:,.0f} ({CH['^IXIC'][1]:+.1f}%)"}
 d = sub.index[-1].date()
-expl = (f"Risk Mood {t:.0f} ({label(t)}) on {d}, {'up' if t>=y else 'down'} {abs(t-y):.0f} from {y:.0f}; "
+expl = (f"Risk Mood {t:.0f} ({label(t)}) now, {'up' if t>=y else 'down'} {abs(t-y):.0f} from {y:.0f} at the prior session; "
         f"biggest driver: {names[drv]} ({moves[drv]}, {contrib[drv]:+.1f} pts).")
 if div.iloc[-1]: expl += f" Divergence: sentiment {sub['sentiment'].iloc[-1]:.0f} vs prices {price.iloc[-1]:.0f}."
 post = (f"Risk Mood: {t:.0f}/100 {label(t)} ({t-y:+.0f})\n\n{moves['sentiment']}\n{moves['yield']}\n"
@@ -82,18 +101,21 @@ fig.savefig("chart.png", dpi=130, bbox_inches="tight", facecolor=fig.get_facecol
 import dashboard
 notes = {"sentiment": "VIX percentile, inverted", "yield": "20d change, inverted", "oil": "20d change, inverted", "nasdaq": "vs 50-day avg"}
 tick = {"sentiment": "^VIX", "yield": "^TNX", "oil": "CL=F", "nasdaq": "^IXIC"}
-fmt = {"sentiment": ("VIX", lambda v: f"{v:.2f}", lambda s: f"{abs(s.diff().iloc[-1]):.2f}", lambda s: s.diff().iloc[-1]),
-       "yield": ("10Y Yield", lambda v: f"{v:.2f}%", lambda s: f"{abs(s.diff().iloc[-1])*100:.0f} bp", lambda s: s.diff().iloc[-1]),
-       "nasdaq": ("Nasdaq", lambda v: f"{v:,.0f}", lambda s: f"{abs(s.pct_change().iloc[-1])*100:.1f}%", lambda s: s.diff().iloc[-1]),
-       "oil": ("WTI Oil", lambda v: f"${v:.2f}", lambda s: f"{abs(s.pct_change().iloc[-1])*100:.1f}%", lambda s: s.diff().iloc[-1])}
+fmt = {"sentiment": ("VIX", lambda v: f"{v:.2f}", lambda c: f"{abs(c[0]):.2f}"),
+       "yield": ("10Y Yield", lambda v: f"{v:.2f}%", lambda c: f"{abs(c[0])*100:.0f} bp"),
+       "nasdaq": ("Nasdaq", lambda v: f"{v:,.0f}", lambda c: f"{abs(c[1]):.1f}%"),
+       "oil": ("WTI Oil", lambda v: f"${v:.2f}", lambda c: f"{abs(c[1]):.1f}%")}
 comps = []
 for k in ["sentiment", "yield", "nasdaq", "oil"]:
-    s = raw[tick[k]]; n, fv, fc, cn = fmt[k]
-    comps.append(dict(name=n, val=fv(s.iloc[-1]), chg=fc(s), chg_num=float(cn(s)), sub=float(sub[k].iloc[-1]),
-                      note=notes[k], spark=[float(x) for x in s.iloc[-60:]]))
+    tk = tick[k]; s = raw[tk]; n, fv, fc = fmt[k]; L = LIVE[tk]
+    asof = pd.Timestamp(L["asof_utc"]).tz_convert("Pacific/Auckland")
+    comps.append(dict(name=n, ticker=tk, val=fv(L["price"]), price=L["price"], prev_close=L["prev_close"], chg=fc(CH[tk]),
+                      chg_num=float(CH[tk][0]), chg_pct=float(CH[tk][1]), sub=float(sub[k].iloc[-1]), note=notes[k],
+                      live=L["live"], quote_source=L["source"], asof_utc=L["asof_utc"], asof_nz=asof.isoformat(),
+                      asof_label=f"{'● Live' if L['live'] else 'Last'} · {asof:%a %H:%M} NZT", spark=[float(x) for x in s.iloc[-60:]]))
 D = dict(score=float(t), prev=float(y), label=label(t), date=str(d), expl=expl, src=src, comps=comps,
                      div=bool(div.iloc[-1]), sent=float(sub["sentiment"].iloc[-1]), price=float(price.iloc[-1]),
-                     trend=[float(x) for x in score.iloc[-30:]], trend_start=str(score.index[-30].date()))
+                     trend=[float(x) for x in score.iloc[-30:]], trend_start=str(score.index[-30].date()), market=MARKET)
 dashboard.build(D)
 dashboard.build_site(D)
 print("Wrote dashboard.html/.png, card.html/.png")
