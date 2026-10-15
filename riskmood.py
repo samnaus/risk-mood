@@ -57,7 +57,8 @@ price = (sub["yield"] * .2 + sub["oil"] * .2 + sub["nasdaq"] * .3) / .7
 div = (sub["sentiment"] - price).abs() > 25
 sub, score, raw = sub.iloc[-WIN:], score.iloc[-WIN:], raw.loc[sub.index[-WIN:]]
 
-def label(x): return ["Extreme Fear", "Fear", "Neutral", "Greed", "Extreme Greed"][min(int(x // 20), 4)]
+def label(x):  # CNN-style zones: 0-25, 25-45, 45-55, 55-75, 75-100
+    return "Extreme Fear" if x < 25 else "Fear" if x < 45 else "Neutral" if x < 55 else "Greed" if x < 75 else "Extreme Greed"
 t, y = score.iloc[-1], score.iloc[-2]
 contrib = (sub.iloc[-1] - sub.iloc[-2]) * pd.Series(W)
 drv = contrib.abs().idxmax()
