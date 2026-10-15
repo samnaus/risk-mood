@@ -1,0 +1,6 @@
+.venv/
+site/
+*.png
+*.html
+xpost.txt
+__pycache__/
