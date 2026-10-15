@@ -55,6 +55,17 @@ background:radial-gradient(circle at 15% 10%,#3b0764 0,transparent 40%),radial-g
 .badge{display:inline-block;white-space:nowrap;padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600}
 .bar{height:7px;border-radius:9px;background:#1e293b;overflow:hidden}.bar>div{height:100%;border-radius:9px}"""
 
+def rows(d):
+    out = ""
+    for c in d["comps"]:
+        col = COL(c["sub"])
+        out += (f'<div class="glass" style="padding:9px 16px;border-radius:14px;display:grid;grid-template-columns:1fr 92px 120px 40px;gap:12px;align-items:center">'
+                f'<div><div style="font-size:15px;font-weight:600">{c["name"]}</div><div class="muted" style="font-size:11px">{c["val"]} · {html.escape(c["note"])}</div></div>'
+                f'<div style="font-size:12px;font-weight:700;color:{col};text-align:right">{c.get("sub_label","").upper()}</div>'
+                f'<div class="bar"><div style="width:{c["sub"]:.0f}%;background:{col}"></div></div>'
+                f'<div style="font-size:18px;font-weight:800;color:{col};text-align:right">{c["sub"]:.0f}</div></div>')
+    return out
+
 def cards(d, compact=False):
     out = ""
     for c in d["comps"]:
@@ -77,8 +88,8 @@ def upd():
 def build(d):
     t, ch = d["score"], d["score"] - d["prev"]
     chc = "#4ade80" if ch >= 0 else "#f87171"
-    divb = (f'<span class="badge" style="background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid #f59e0b55">⚠ Divergence: sentiment {d["sent"]:.0f} vs prices {d["price"]:.0f}</span>'
-            if d["div"] else f'<span class="badge" style="background:rgba(34,197,94,.12);color:#4ade80;border:1px solid #22c55e44">✓ Aligned: sentiment {d["sent"]:.0f} · prices {d["price"]:.0f}</span>')
+    divb = (f'<span class="badge" style="background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid #f59e0b55">⚠ Divergence: options/vol {d["sent"]:.0f} vs price/breadth {d["price"]:.0f}</span>'
+            if d["div"] else f'<span class="badge" style="background:rgba(34,197,94,.12);color:#4ade80;border:1px solid #22c55e44">✓ Aligned: options/vol {d["sent"]:.0f} · price/breadth {d["price"]:.0f}</span>')
     dash = f'''<!doctype html><html><head><meta charset="utf-8"><title>Risk Mood</title><style>{CSS}
 body{{width:1200px;height:900px;padding:36px;display:flex;flex-direction:column}}.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:20px}}.card{{padding:18px}}</style></head><body>
 <div style="display:flex;justify-content:space-between;align-items:center"><div><div class="brand" style="font-size:34px">Risk Mood</div>
@@ -93,15 +104,15 @@ body{{width:1200px;height:900px;padding:36px;display:flex;flex-direction:column}
 <div><div class="muted" style="font-size:13px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px">30-day score</div>
 {spark(d["trend"], w=440, h=110, color="#a78bfa")}<div class="muted" style="display:flex;justify-content:space-between;font-size:12px"><span>{d["trend_start"]}</span><span>{d["date"]}</span></div></div></div></div>
 <div class="grid">{cards(d)}</div>
-<div class="muted" style="font-size:11px;margin-top:18px">Data: Yahoo Finance (^VIX, ^TNX, ^IXIC, CL=F). Sentiment: {html.escape(d["src"])}. Sub-scores = 1-yr percentile ranks; 0 = extreme fear, 100 = extreme greed. Not financial advice.</div></body></html>'''
+<div class="muted" style="font-size:11px;margin-top:18px">Method: CNN Fear &amp; Greed style, 7 equal-weight indicators, each 100×NormalCDF(z vs 2-yr mean/std). Data: {html.escape(d["src"])}. 0 = extreme fear, 100 = extreme greed. Not financial advice.</div></body></html>'''
     card = f'''<!doctype html><html><head><meta charset="utf-8"><style>{CSS}
 body{{width:1200px;height:675px;padding:40px 48px;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between}}.card{{padding:16px 18px}}</style></head><body>
 <div style="display:flex;justify-content:space-between;align-items:center"><div class="brand" style="font-size:40px">Risk Mood</div>
 <div style="display:flex;gap:12px;align-items:center">{('<span class="badge" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid #22c55e55">● Live</span>' if d.get("market")=="Live" else '<span class="badge" style="background:rgba(148,163,184,.12);color:#cbd5e1;border:1px solid #94a3b844">◐ US market closed</span>')}</div></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center">
+<div style="display:grid;grid-template-columns:470px 1fr;gap:30px;align-items:center">
 <div style="text-align:center">{gauge(t, 520, upd())}
 <div style="font-size:28px;font-weight:700;color:{COL(t)}">{d["label"]} <span style="font-size:20px;color:{chc}">{'▲' if ch>=0 else '▼'}{abs(ch):.0f}</span></div></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">{cards(d, compact=True)}</div></div>
+<div style="display:grid;gap:8px">{rows(d)}</div></div>
 <div style="display:flex;justify-content:space-between;align-items:center"><div>{divb}</div>
 <div class="muted" style="font-size:13px">0 = extreme fear · 100 = extreme greed · not financial advice</div></div></body></html>'''
     open("dashboard.html", "w").write(dash); open("card.html", "w").write(card)
@@ -118,8 +129,8 @@ def build_site(d, out="site"):
     now = datetime.datetime.now(datetime.timezone.utc)
     nz = now.astimezone(zoneinfo.ZoneInfo("Pacific/Auckland"))
     t, ch = d["score"], d["score"] - d["prev"]; chc = "#4ade80" if ch >= 0 else "#f87171"
-    divb = (f'<span class="badge" style="background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid #f59e0b55">⚠ Divergence: sentiment {d["sent"]:.0f} vs prices {d["price"]:.0f}</span>'
-            if d["div"] else f'<span class="badge" style="background:rgba(34,197,94,.12);color:#4ade80;border:1px solid #22c55e44">✓ Aligned: sentiment {d["sent"]:.0f} · prices {d["price"]:.0f}</span>')
+    divb = (f'<span class="badge" style="background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid #f59e0b55">⚠ Divergence: options/vol {d["sent"]:.0f} vs price/breadth {d["price"]:.0f}</span>'
+            if d["div"] else f'<span class="badge" style="background:rgba(34,197,94,.12);color:#4ade80;border:1px solid #22c55e44">✓ Aligned: options/vol {d["sent"]:.0f} · price/breadth {d["price"]:.0f}</span>')
     url = "https://samnaus.github.io/risk-mood/"
     desc = f"Risk Mood {t:.0f}/100 ({d['label']}, {ch:+.0f}) - one score for VIX, 10Y yield, Nasdaq and oil."
     page = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -132,7 +143,7 @@ def build_site(d, out="site"):
 <meta http-equiv="refresh" content="900"><style>{CSS}
 body{{min-height:100vh;padding:clamp(18px,4vw,48px)}}.wrap{{max-width:1150px;margin:0 auto}}
 .top{{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}}
-.main{{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center;margin:28px 0}}
+.main{{display:grid;grid-template-columns:470px 1fr;gap:30px;align-items:center;margin:28px 0}}
 .cards{{display:grid;grid-template-columns:1fr 1fr;gap:16px}}.card{{padding:16px 18px}}
 .gauge svg{{width:100%;max-width:500px;height:auto}}.score{{font-size:clamp(64px,12vw,104px);font-weight:800;line-height:1}}
 .foot{{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px}}
@@ -145,8 +156,8 @@ body{{min-height:100vh;padding:clamp(18px,4vw,48px)}}.wrap{{max-width:1150px;mar
 <div class="glass" style="padding:18px 20px;margin-bottom:18px"><div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:1px">Why it moved</div>
 <div style="font-size:16px;line-height:1.5;margin-top:6px">{html.escape(d["expl"])}</div></div>
 <div class="foot"><div>{divb}</div><div class="muted">Last updated {nz:%a %d %b %Y, %H:%M} NZT · {now:%Y-%m-%d %H:%M} UTC</div></div>
-<p class="muted" style="font-size:12px;margin-top:16px;line-height:1.6">Data: Yahoo Finance (^VIX, ^TNX, ^IXIC, CL=F). Sentiment: {html.escape(d["src"])}.
-Sub-scores are 1-year percentile ranks; 0 = extreme fear, 100 = extreme greed. Refreshes about every 15 minutes; prices are the latest 1-minute quotes (Yahoo data can be delayed ~15 min; ^TNX has no pre/after-market quotes); changes are vs previous close. Not financial advice. <a href="data.json" style="color:#60a5fa">data.json</a></p>
+<p class="muted" style="font-size:12px;margin-top:16px;line-height:1.6"><b>Method</b> (replicating CNN Fear &amp; Greed): 7 equally weighted indicators; each is scored 0-100 by how far it deviates from its 2-year average relative to its normal range (100 × NormalCDF of the z-score), then averaged. Data: {html.escape(d["src"])}.
+0 = extreme fear, 100 = extreme greed. Refreshes about every 15 minutes; S&amp;P 500, VIX and SPY/TLT use the latest 1-minute quotes (Yahoo can be delayed ~15 min); breadth/highs-lows update at the US close and the junk spread with FRED's ~1-day lag. Card arrows show the sub-score change vs the prior session. Unofficial; not affiliated with CNN. Not financial advice. <a href="data.json" style="color:#60a5fa">data.json</a></p>
 </div></body></html>'''
     open(os.path.join(out, "index.html"), "w").write(page)
     shutil.copy("card.png", os.path.join(out, "card.png"))
